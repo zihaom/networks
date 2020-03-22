@@ -1,0 +1,68 @@
+Program Structure and Design:
+
+  sr_handlepacket():
+  This function handles all of the different cases that come with receiving a
+  packet for the router. To write this function, we essentially took the initial
+  project readme that we were given and hashed out all of the possible cases.
+  This includes ARP packets, ICMP messages, and IP packets. In order to handle
+  all of these cases, we created a lot of helper functions:
+  longestprefixmatch():
+    LPM allows us to determine refer to the routing table and determine the
+    correct interface to send a packet through if it needs to be forwarded.
+    sr_icmp_make_packet():
+    This function makes and sends an ICMP message when we reach a condition that
+    requires us to do so.
+    sr_ForwardPacket():
+    This function forwards a packet along, utilizing the LPM function, once we've
+    determined that it's time to do so.
+    IPcheck():
+    IPcheck is primarily used to determine if a given address is one of our
+    router's IPs. We primarily use this to see if a packet's target IP is one of
+    ours in the case of an ICMP request.
+    ip_checksum():
+    This function recomputes the checksum within the IP header.
+    icmp_checksum():
+    This function recomputes the checksum in the ICMP header.
+    sr_arp_dequeue():
+    sr_arp_dequeue removes an ARP request off of the ARP queue when we receive
+    a reply.
+  sr_arpcache_sweepreqs():
+    The pseudocode for this function in the arpcache header file really helped
+    us out in writing this. One cases of this function is that when we send
+    5 ARP requests, we send an ICMP: host unreachable message back to the
+    sender of the ARP requests. Like the sr_handlepacket function above, we
+    created a couple helper functions in order to handle the various cases,
+    these functions also contribute to certain cases in our sr_handlepacket
+    function:
+    sr_arp_make_packet():
+    This function allows us to send ARP replies when we receive ARP request
+    packets that are destined for us (using the IPcheck function).
+    sr_arp_request():
+    The function allows us to send ARP requests.
+
+
+Implementation Challenges:
+  Initial Challenge:
+  Our initial problem with this project was figuring out exactly where we
+  should start, although the project readme we were given specified the
+  functions we should work on, we still had trouble given that there were so
+  many source files to be working with. But, once we got a good understanding
+  of the source files we were given, we felt great, given that a lot of the
+  functions we used throughout were given to us in the source files.
+
+
+Testing:
+  Initial Tests:
+  We didn't really test this function as much as we should have to begin with,
+  because we felt pretty comfortable coding through certain parts, as most
+  of the algorithms used to develop this code were pretty clear cut. This
+  definitely added some more work for us in the back-end of the project, as
+  we had to test for a lot of cases, and weren't sure about certain parts of
+  our code. I know by doing this we broke the cardinal sin of computer science
+  in writing code without testing it, but this wasn't exactly a typical CS
+  project.
+  Final Tests:
+  Like I pointed out before, we put off a lot of the testing at the start
+  which kind of stacked up on us. This led to a lot more time debugging than
+  we thought, but thankfully we were able to get through the bugs we that
+  hindered us and finish up this project.

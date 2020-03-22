@@ -1,0 +1,160 @@
+Program Structure and Design:
+Our most significant changes to the design of the code is that we put lot of
+our variables into two data structures, send window (send_window_t)
+and recv_window (recv_window_t), which would be kept in state.
+
+In the send window, we put all the variables the sender would need including
+a linked list of segments sent to be freed or resend, the maximum size of
+the send window, the current size of the window,the receiver window size
+which combined could decide it to hold the application layer back for inputs,
+the sequnce number (the line in the middle of the window),
+timer for time outs and retransmission counter for ending unstable connections.
+
+While in the recv window, we put a linked list of of segments queued for
+ctcp_output in case it is held off, the maximum size of the the recv window,
+the size of the current window, and the ack number for the sender.
+
+Thus, in the state struct, we only have a few things.
+The send window, the recv window,
+send_buf is the buffer to store the input info,
+send_buf_len is the length of the buffer,
+timeout_standard for checking timeouts, and two nodes to keep track of the the
+last acked and sent segments.
+
+
+-------------------------------------------------------------------------------
+For the functions:
+
+Inside the ctcp_init fuction, we first check if the connection can be
+established. Then we set the fields we added in the ctcp_state and the two
+data structures. We malloced the memories for the two segments and
+the buffer with has length 0. We initialize all the variables to its default
+values. The state list is managed so that it could support multiple clients
+connecting to the same server.
+
+In the ctcp_destroy function we tear down the connection by destroying a state.
+We link the next state with the previous one,free the buffer and
+the two windows. We also destroys the two linked list in the two windows.
+
+For the ctcp_read function,we first see if there are remaining space in the send
+window. If not, we could only send a portion of it this time and the remaining
+for the next round. We obtain and store the input to send_buf
+and if the buffer length isn't -1, which means we get eof, we call
+ctcp_makeseg_send, a utility function to send out data. We wipe the buffer next.
+If the length is -1, we send FIN and go to the fin wait stage.
+
+print_segment_list is a debugger function that prints the send window and recv
+window.
+
+The ctcp_makeseg is a utility function to send out data that takes a state
+and a mode to indicate if the packet sending is a data packet, an ACK or a FIN.
+The function first initializes a segment with a size of buffer length and
+header length.
+For different modes, if the mode indicates that we are sending a data packet
+we modify the seq, ack, we initializes the timer, and puts the buffer into data.
+We wipe the buffer with an empty string. We put this into the linked list
+and send it via the function ctcp_send_data.
+If we are sending an ACK packet we modify the seq and ack number, and sets the
+flag to ACK.If we are sending a FIN or FIN ACK, we only have to set the flag,
+and we destroy the state after we send. We then computes the cksum.
+Finally we sends the packet and store the segment in segment_lastsent.
+	The function has not been changed much but adding the send and recv window data
+structure feature, and cleaning up the code.
+
+ctcp_send is a utility function that sends the data in the queue linked
+list according to the sender's availability. We starts the timer first. We then
+loop through the lined list to see if each segment has been sent or not by
+checking if is is given a cksum that is different than the default value. If
+not, we put the cksum in the segment and sends it.
+
+ctcp_retrans is a utility function that resend the first segment in the sender
+window. Before resending, we restart the timer so that it is up to date.
+
+The checksum function is a utility function later used by ctcp_receive to
+determine if the packet has been corrupted during transmission. The algorithm
+is mainly checking if the received segment checksum is equal to the checksum
+computed with the segment cksum of 0.
+
+In the ctcp_receive first checks the cksum of the segment to know whether the
+packet is corrupted, and end and wait for timeout if so.
+  If we get a FIN, we would send back an ack. After we finish sending, we send
+back a FIN ACK and go to the last ack stage and prepare to destroy the state.
+  If we get a FIN ACK, we send back an ack and tear down the connection after
+2 RTTs.
+  If we get an ACK, we check if it is the ACK we expected or cumulative by
+checking if the ackno is equal or bigger than the first node in the linked list.
+If so, we loop through the linked list to see how far did the ack confirmed
+and free all the confirmed segments and reduces the window size (sliding the
+window). Afterwards, we reset the timer and call ctcp_send to check for more.
+If ackno not expected, we wait for timeout.
+	If we get a data package, and it is a duplicated data segment, we would just
+send an ack from recv window.		If it is a packet we expect, we store it in the
+recv window and increment the window size. We obtain the ackno by traversing
+the recv window to see if there is a gap. After we send the suitable ack, we
+call ctcp output.		If we get a data packet that is out of order, we traverse
+through the recv linked list and see if we can find a gap to fit it in, or we
+insert it on the back.
+
+In the ctcp_output function, we traverse through the recv window linked list
+to output every segment ready for output, and then for each segment ready, we
+check which of the output buffer space and the data buffer length is smaller and
+output the size of the smaller of the two.
+
+In the ctcp_timer function,we traverse though the state_list to see if there is
+time out for each state. If there is a timeout, we calls ctcp_retrans to resend
+and restart the timer in the send function. We also increment the retransmit
+counter as well to keep track out the times a packet has been resent. We give
+each segment 5 chances, and kills the connection after the 5th failure.
+
+-------------------------------------------------------------------------------
+Implementation Challenges
+
+The main challenge has been debugging the project as well as understanding the
+connection ending for TCP. As the functions are called only when a event happens
+, it is really hard to decide what happens when we receive a FIN packet or what
+to do when we get a fin ack packet and how they could collide with each other.
+Thus, when debugging, we get really confused when testing number 12 gives us a
+seg fault when handling a EOF, which means that one part has sent a FIN.
+
+The other issue is caused by the unskillful c language, especially in keeping
+track of the memories allocated and whether it should be freed here or it has
+already been freed at some other places. This has certainly caused a lot of seg
+faults as well. I guess practice makes perfect, so that we will get better next
+time.
+
+-------------------------------------------------------------------------------
+Testing
+
+Aside from just building a ctcp server and a ctcp client to test out the basic
+connection and transmission functionalities, and some drops to see the
+reliability part, we utilized more tools which can help us better understand if
+the code works as supposed.	 We found the test cases given in the tester-student
+.py really helpful, as it could tell us which functionalities failed and we can
+know which specific functions should we look at for debugging.		We also looked
+at the corrupt, delay, and duplicate flags for the command line to test our
+abilities to handle all these cases.  		We also tested it against the google
+server and the reference file to see if they inter-cooperate.		 To check if it
+could handle big files, I grabbed a big 7mb executable file and sent it to the
+client and the first time it gave us something really weird, that the received
+file is bigger than the original file.		To check for memory leaks we used
+valgrind to keep track of which memory is free and which is not. 		We also
+found out that these commends can be combined to simulate more complex
+situations against our Implementation.
+
+-------------------------------------------------------------------------------
+Memory management
+The design of the memory management is lay outed in this way: when we tear-down
+one connection, we call the ctcp_destroy function. The function handles the
+deletion of every thing allocated for the state, like the windows, the buffer,
+the conn, the linked list in the windows. We freed each segment on the sender
+side when the segment is acked, and we free each segment on the recver side when
+the segment is being outputed.
+
+-------------------------------------------------------------------------------
+Remaining Bugs
+
+The biggest issue is still the memory management as mentioned in the previous
+section due to lack of time to track down all the pointers and memory allocated.
+The other issue is about ending the connection. specific, we could not pass the
+student tester 12 about handling the EOF. We manually tested ourselves and we
+thought it worked fine.
